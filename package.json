@@ -1,0 +1,22 @@
+{
+  "name": "play-with-redisjson",
+  "version": "1.0.0",
+  "description": "Some scripts to explore secondary index with redisjson and redissearch",
+  "main": "10-insert.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/s3pweb/play-with-redisjson.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/s3pweb/play-with-redisjson/issues"
+  },
+  "homepage": "https://github.com/s3pweb/play-with-redisjson#readme",
+  "dependencies": {
+    "redis": "^4.0.3"
+  }
+}
