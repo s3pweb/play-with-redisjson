@@ -1,3 +1,5 @@
+# github.com/FZambia/sentinel v1.1.0
+## explicit
 # github.com/RediSearch/redisearch-go v1.1.2-0.20220111081613-d5d828269311
 ## explicit; go 1.16
 github.com/RediSearch/redisearch-go/redisearch

@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
-	"os"
+	"strings"
 	"time"
 
 	goredis "github.com/go-redis/redis/v8"
@@ -41,86 +42,95 @@ func main() {
 	user := flag.String("user", "default", "redis user")
 	password := flag.String("password", "", "redis password")
 
-	useRedigo := flag.Bool("redigo", false, "use Redigo client")
-	useGoRedis := flag.Bool("goredis", false, "use GoRedis client")
+	useSentinel := flag.Bool("sentinel", false, "use sentinel to retrieve master")
+
+	loop := flag.Bool("loop", false, "loop?")
 
 	flag.Parse()
 
-	if !*useRedigo && !*useGoRedis {
-		fmt.Println("Please tell what client to use.")
-		flag.PrintDefaults()
-		os.Exit(1)
-	}
-
 	rh := rejson.NewReJSONHandler()
 
-	// Redigo Client
-	if *useRedigo {
-		conn, err := redis.Dial("tcp", *addr, redis.DialUseTLS(*useTLS), redis.DialUsername(*user), redis.DialPassword(*password))
+	var goredisClient *goredis.Client
 
-		if err != nil {
-			log.Fatalln(err)
+	if *useSentinel {
+		opts := &goredis.FailoverOptions{MasterName: "default", SentinelAddrs: strings.Split(*addr, ","), Username: *user, Password: *password, SentinelUsername: *user, SentinelPassword: *password}
+		if *useTLS {
+			opts.TLSConfig = &tls.Config{
+				InsecureSkipVerify: true, // sentinels returns IP instead of hostname
+			}
 		}
-
-		rh.SetRedigoClient(conn)
-	}
-
-	// GoRedis Client
-	if *useGoRedis {
+		goredisClient = goredis.NewFailoverClient(opts)
+	} else {
 		opts := &goredis.Options{Addr: *addr, Username: *user, Password: *password}
 		if *useTLS {
 			opts.TLSConfig = &tls.Config{}
 		}
-		cli := goredis.NewClient(opts)
-
-		rh.SetGoRedisClient(cli)
+		goredisClient = goredis.NewClient(opts)
 	}
 
-	ret, err := rh.JSONSet("input:5e986128435ad3fafbeb88dc", "$", &Input{
-		ResourceID: "5e98612a9a72a30010ec03f4", // could be a secondary index
-		EntityID:   "5e9572de2b4aae0010433600", // could be a secondary index,
+	rh.SetGoRedisClient(goredisClient)
 
-		Description: "BLABLABLA",
-		Speed: InputSpeed{
-			Ts:    time.Now().Unix(),
-			Value: 25,
-		},
-		Course: InputCourse{
-			Ts:    time.Now().Unix(),
-			Value: 200,
-		},
-		Sensor: []int{1001, 1002, 1003},
-	})
+	do := func() {
+		ret, err := rh.JSONSet("input:5e986128435ad3fafbeb88dc", "$", &Input{
+			ResourceID: "5e98612a9a72a30010ec03f4", // could be a secondary index
+			EntityID:   "5e9572de2b4aae0010433600", // could be a secondary index,
 
-	fmt.Println("WRITE ->", ret, err)
+			Description: "BLABLABLA",
+			Speed: InputSpeed{
+				Ts:    time.Now().Unix(),
+				Value: 25,
+			},
+			Course: InputCourse{
+				Ts:    time.Now().Unix(),
+				Value: 200,
+			},
+			Sensor: []int{1001, 1002, 1003},
+		})
 
-	if err != nil {
-		log.Fatalln(err)
+		fmt.Println("WRITE ->", ret, err)
+
+		if err != nil {
+			log.Println(err)
+		}
+
+		inputJSON, err := redis.Bytes(rh.JSONGet("input:5e986128435ad3fafbeb88dc", "$"))
+
+		if err != nil {
+			log.Println(err)
+		}
+
+		readInput := []Input{}
+		err = json.Unmarshal(inputJSON, &readInput)
+		if err != nil {
+			log.Println(err)
+		}
+
+		if len(readInput) > 0 {
+			fmt.Printf("1 -> %+v\n", readInput[0])
+		}
+
+		inputDescription, err := redis.Bytes(rh.JSONGet("input:5e986128435ad3fafbeb88dc", ".description"))
+		if err != nil {
+			log.Println(err)
+		}
+		fmt.Printf("2 -> %s\n", string(inputDescription))
+
+		inputCourseTS, err := redis.Bytes(rh.JSONGet("input:5e986128435ad3fafbeb88dc", ".course.ts"))
+		if err != nil {
+			log.Println(err)
+		}
+		fmt.Printf("3 -> %s\n", string(inputCourseTS))
 	}
 
-	inputJSON, err := redis.Bytes(rh.JSONGet("input:5e986128435ad3fafbeb88dc", "$"))
+	if *loop {
+		for {
 
-	if err != nil {
-		log.Fatalln(err)
+			fmt.Println(goredisClient.Info(context.Background(), "replication").Result())
+
+			do()
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
 
-	readInput := []Input{}
-	err = json.Unmarshal(inputJSON, &readInput)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	fmt.Printf("1 -> %+v\n", readInput[0])
-
-	inputDescription, err := redis.Bytes(rh.JSONGet("input:5e986128435ad3fafbeb88dc", ".description"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Printf("2 -> %s\n", string(inputDescription))
-
-	inputCourseTS, err := redis.Bytes(rh.JSONGet("input:5e986128435ad3fafbeb88dc", ".course.ts"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Printf("3 -> %s\n", string(inputCourseTS))
+	do()
 }
