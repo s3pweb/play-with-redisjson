@@ -55,9 +55,7 @@ func main() {
 	if *useSentinel {
 		opts := &goredis.FailoverOptions{MasterName: "default", SentinelAddrs: strings.Split(*addr, ","), Username: *user, Password: *password, SentinelUsername: *user, SentinelPassword: *password}
 		if *useTLS {
-			opts.TLSConfig = &tls.Config{
-				InsecureSkipVerify: true, // sentinels returns IP instead of hostname
-			}
+			opts.TLSConfig = &tls.Config{}
 		}
 		goredisClient = goredis.NewFailoverClient(opts)
 	} else {
